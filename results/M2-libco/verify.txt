@@ -1,0 +1,13 @@
+### M2 libco verification ###
+gcc 13.3, stackful coroutines via setjmp/longjmp + inline-asm stack switch
+
+test_1 = two coroutines alternately incrementing a shared counter -> expect (X|Y){0..199}
+test_2 = 2 producers + 2 consumers over a bounded queue -> expect libco-{200..399}
+
+-- 64-bit run (first 400 bytes) --
+Test #1. Expect: (X|Y){0, 1, 2, ..., 199}
+X0  Y1  X2  Y3  X4  Y5  X6  Y7  X8  Y9  X10  Y11  X12  Y13  X14  Y15  X16  Y17  X18  Y19  X20  Y21  X22  Y23  X24  Y25  X26  Y27  X28  Y29  X30  Y31  X32  Y33  X34  Y35  X36  Y37  X38  Y39  X40  Y41  X42  Y43  X44  Y45  X46  Y47  X48  Y49  X50  Y51  X52  Y53  X54  Y55  X56  Y57  X58  Y59  X60  Y61  X62  Y63  X64  Y65  X66  Y67  X68  Y69  X70  Y71  X72  Y73
+
+-- validation (python re-parse of full output) --
+64-bit: test1 counters 0..199 in order = True (200 tokens); test2 200..399 in order = True (200 tokens); exit 0
+32-bit: test1 counters 0..199 in order = True (200 tokens); test2 200..399 in order = True (200 tokens); exit 0
