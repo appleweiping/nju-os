@@ -1,0 +1,21 @@
+### M3 sperf verification ###
+strace 6.8, gcc 13.3. sperf runs COMMAND under 'strace -T -f', parses the
+<seconds> trailer of each traced line, aggregates wall time per syscall.
+
+=== ./sperf-64 bash -c "find /usr/include -name *.h | wc -l"  (final report) ===
+--
+total traced syscall time: 0.915059 s
+
+getdents64             0.271898 s  ( 29.7%)
+fcntl                  0.197753 s  ( 21.6%)
+close                  0.179865 s  ( 19.7%)
+newfstatat             0.132406 s  ( 14.5%)
+openat                 0.057930 s  (  6.3%)
+fstat                  0.044474 s  (  4.9%)
+mmap                   0.009288 s  (  1.0%)
+rt_sigaction           0.004492 s  (  0.5%)
+rt_sigprocmask         0.001925 s  (  0.2%)
+brk                    0.001754 s  (  0.2%)
+
+Interpretation: a directory-tree walk is dominated by getdents64/newfstatat/
+fcntl/close, which is exactly what sperf reports -> time is attributed correctly.
