@@ -8,8 +8,9 @@ submit:
 	  curl -sSLf '$(URL)' && \
 	  curl -sSLf '$(URL)' | bash
 
+# NOTE: the upstream workbench 'git' target auto-commits after every build
+# (used by NJU's online judge to snapshot submissions). In this standalone
+# repo that would pollute history with "uname -a / uptime" commits, so it is
+# a no-op here. Real commits are made explicitly by the author.
 git:
-	@git add $(shell find . -name "*.c") $(shell find . -name "*.h") -A --ignore-errors
-	@while (test -e .git/index.lock); do sleep 0.1; done
-	@(uname -a && uptime) | git commit -F - -q --author='tracer-nju <tracer@nju.edu.cn>' --no-verify --allow-empty
-	@sync
+	@true

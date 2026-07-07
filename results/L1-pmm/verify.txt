@@ -1,0 +1,20 @@
+### L1 pmm verification (AbstractMachine native backend, WSL2) ###
+gcc 13.3, g++ link, SDL2. Concurrent buddy + per-CPU slab allocator.
+Build:  make ARCH=native TEST=pmm
+Run:    smp=<N> ./build/kernel-native   (N processors)
+
+Test: each CPU runs 2000 rounds x 64 live blocks, random sizes 1..8192,
+writes a per-block signature and re-reads it (detects overlap/corruption),
+checks every block is in-heap and aligned to the smallest pow2 >= size.
+
+=== smp=1 ===
+Got 128 MiB heap: [0x1000000, 0x9000000)
+pmm: 32672 data pages, region [0x1060000, 0x9000000)
+======== PMM STRESS RESULT ========
+cpus=1  total_cycles=2000  FAIL=0  => PASSED
+
+=== smp=4 ===
+cpus=4  total_cycles=8000  FAIL=0  => PASSED
+
+=== smp=8 ===
+cpus=8  total_cycles=16000  FAIL=0  => PASSED
