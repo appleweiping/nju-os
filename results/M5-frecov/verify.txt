@@ -1,0 +1,18 @@
+### M5 frecov verification ###
+gcc 13.3. Scans the whole FAT32 image on 32-byte boundaries for directory
+records, reconstructs long file names from LFN runs, recovers BMP data from
+contiguous clusters, verifies the BM header, and prints '<sha1>  <name>'.
+SHA-1 (RFC 3174) is implemented inline.
+
+TEST A: 5 short-named BMPs (16x16..48x48), FAT32 image built with mkfs.fat + mtools.
+  live image   -> 5/5 sha1 match the originals (byte-exact)
+  after mdel    -> 5/5 sha1 STILL match (data recovered post-deletion)
+
+TEST B: 2 long-named BMPs (force LFN entries):
+87fa934b40fa2d3d57de791d7436c74a7536d993  a_very_long_picture_name_one.bmp
+a8de9726aa8e651b041c837e511d6a3ece1f6a11  another_long_photograph_two.bmp
+87fa934b40fa2d3d57de791d7436c74a7536d993  a_very_long_picture_name_one.bmp
+a8de9726aa8e651b041c837e511d6a3ece1f6a11  another_long_photograph_two.bmp
+matching: 2 / 2
+
+-> LFN names reconstructed exactly AND data sha1 matches 2/2.
