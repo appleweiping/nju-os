@@ -1,0 +1,31 @@
+# Build artifacts
+*.o
+*.d
+*.so
+*.a
+build/
+Debug/
+
+# M-lab compiled binaries
+minilabs/*/*-64
+minilabs/*/*-32
+minilabs/*/*-64.so
+minilabs/*/*-32.so
+minilabs/libco/tests/libco-test-64
+minilabs/libco/tests/libco-test-32
+
+# OS-lab build
+oslabs/kernel/build/
+oslabs/amgame/build/
+oslabs/user/build/
+oslabs/abstract-machine/am/build/
+oslabs/abstract-machine/klib/build/
+
+# Editor / OS
+.vscode/
+*.swp
+.DS_Store
+
+# Test fixtures (large FAT images generated at runtime)
+minilabs/frecov/*.img
+minilabs/frecov/fsrecov.img
