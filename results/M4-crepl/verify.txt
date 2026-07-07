@@ -1,0 +1,33 @@
+### M4 crepl verification ###
+gcc 13.3 + libdl. Function defs -> compiled to .so, dlopen(RTLD_GLOBAL);
+expressions -> wrapped in 'int __expr_wrapper_N(){return(EXPR);}', compiled,
+dlopen'd, dlsym'd, called. Cross-.so calls bind via the dynamic loader.
+
+=== scripted session (64-bit) ===
+--- input ---
+int go(int a, int b) { return a + b; }
+go(1, 2)
+go(10, 20) * 100 + go(1,1)
+int fib(int n) { return n < 2 ? n : fib(n-1) + fib(n-2); }
+fib(10)
+fib(20)
+int sq(int x) { return x * x; }
+sq(go(3,4))
+1 + 2 * 3 - 4
+badcall(
+--- output ---
+crepl> OK.
+crepl> = 3
+crepl> = 3002
+crepl> OK.
+crepl> = 55
+crepl> = 6765
+crepl> OK.
+crepl> = 49
+crepl> = 3
+crepl> Compile error.
+crepl> 
+Checks: go(1,2)=3; go(10,20)*100+go(1,1)=3002; fib(10)=55; fib(20)=6765;
+        sq(go(3,4))=49; 1+2*3-4=3. Recursive fib and nested sq(go(..)) show
+        incremental cross-.so linking works. The trailing 'badcall(' line
+        exercises the compile-error path.
