@@ -151,7 +151,10 @@ static struct task *prev_task[MAX_CPU];
 // Timer/yield handler: save the running task's context, pick the next task, and
 // return its context so CTE resumes it.  Runs in trap context (interrupts
 // masked), so it uses the raw task_lock.
-static Context *kmt_schedule(Event ev, Context *ctx) {
+//
+// Also called directly by uproc's syscall handler (see os.h) after servicing a
+// system call, so that exit()/wait()/sleep() can switch to another task.
+Context *kmt_schedule(Event ev, Context *ctx) {
   int cpu = cpu_current();
 
   task_lock_acquire();
@@ -220,6 +223,21 @@ static int kmt_create(struct task *task, const char *name,
   task_list = task;
   task_lock_release();
   return 0;
+}
+
+// Add a task whose Context has already been built (e.g. a user process created
+// by uproc via ucontext) to the scheduler's ready list.  The caller must have
+// set name/state/cpu/on_cpu/saved_* and task->context beforehand.
+void kmt_register(struct task *task) {
+  task_lock_acquire();
+  task->sched_next = task_list;
+  task_list = task;
+  task_lock_release();
+}
+
+// The task currently running on this CPU (used by uproc syscall handlers).
+struct task *kmt_current(void) {
+  return current[cpu_current()];
 }
 
 static void kmt_teardown(struct task *task) {

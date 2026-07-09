@@ -21,6 +21,10 @@ oslabs/user/build/
 oslabs/abstract-machine/am/build/
 oslabs/abstract-machine/klib/build/
 
+# OS-lab user-program intermediates (flat binaries embedded via uprogs.inc)
+oslabs/user/*.elf
+oslabs/user/*.bin
+
 # Editor / OS
 .vscode/
 *.swp

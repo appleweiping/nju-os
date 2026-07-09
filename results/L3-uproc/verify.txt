@@ -1,0 +1,39 @@
+### L3 uproc verification (AbstractMachine native backend, WSL2 Ubuntu 24.04, gcc 13.3) ###
+Build:  (user) cd oslabs/user && make        # flat user binaries -> kernel/src/uprogs.inc
+        (kernel) cd oslabs/kernel && make ARCH=native
+Run:    smp=<N> ./build/kernel-native
+
+User process model: each process has its own AM AddrSpace (protect/map/ucontext)
+over L1 pmm pages; syscalls trap via the native 0x100000 trap page (EVENT_SYSCALL);
+the L2 kmt scheduler time-slices user processes. init (pid 1) drives the tests.
+
+=== smp=1 ===
+Got 128 MiB heap: [0x1000000, 0x9000000)
+pmm: 32672 data pages, region [0x1060000, 0x9000000)
+uproc: created init (pid 1), entering user space...
+
+[init] NJU-OS user space up. pid=1
+
+== L3 uproc: user processes & syscalls ==
+  [ok] getpid() returns 1 for init
+  [ok] uptime() is monotonic
+  [ok] fork() returns a child pid > 1
+  child: pid=2, parent alive
+  [ok] wait() reaps the child
+  [ok] wait() reports exit status 42
+  [ok] wait() reaps all 4 children
+  hello: I am a separate program, pid=7
+  [ok] exec() ran /bin/hello (exit 0)
+  [ok] mmap() returns a usable address
+  [ok] mmap page holds written data
+== L4 vfs not present (L3-only build) ==
+
+==================================
+ALL TESTS PASSED
+==================================
+init: exited with status 0 -- halting
+Exit code = 00h
+
+=== smp=4 (same tests under real fork-based SMP) ===
+ALL TESTS PASSED
+Exit code = 00h
