@@ -5,7 +5,7 @@
 > **蒋炎岩 (Yanyan Jiang / jyy)**, Nanjing University — part of a
 > [csdiy.wiki](https://csdiy.wiki/) full-catalog build.
 
-![status](https://img.shields.io/badge/status-7%2F9%20labs%20verified-brightgreen)
+![status](https://img.shields.io/badge/status-9%2F9%20labs%20verified-brightgreen)
 ![language](https://img.shields.io/badge/C-informational)
 ![license](https://img.shields.io/badge/license-MIT-blue)
 
@@ -35,8 +35,8 @@ are captured under [`results/`](results/).
 | **M5 frecov** | recover deleted BMPs from a FAT32 image | 5/5 short-named byte-exact (live **and** post-delete); 2/2 long-named exact name+data |
 | **L1 pmm** | concurrent buddy + per-CPU slab allocator | stress smp=1/4/8 → 2000 / 8000 / 16000 cycles, `FAIL=0` |
 | **L2 kmt** | preemptive SMP scheduler, spinlocks, semaphores | mutex 8×50000=400000 exact; producer/consumer 4×20000=80000 exact; `PASSED` at smp=1/2/4/8 |
-| L3 uproc | user processes (VME + syscalls) | *not yet implemented* |
-| L4 vfs | virtual file system | *not yet implemented* |
+| **L3 uproc** | user processes: per-process address space (VME), user-mode contexts, `fork`/`exit`/`wait`/`exec`/`mmap`/`getpid`/`sleep`/`uptime`/`kputc` syscalls | `init` forks/reaps children with correct exit statuses, `exec`s `/bin/hello`, `mmap`s usable pages — **ALL TESTS PASSED** at smp=1/2/4 |
+| **L4 vfs** | virtual file system: mount table + path resolution, inode/file abstractions, **ramfs** (/) + **devfs** (/dev) + **procfs** (/proc), wired under the L3 file syscalls | file round-trips via `open`/`write`/`lseek`/`read`/`close`; `/dev/{zero,null,random,tty}` and `/proc/{meminfo,uptime}` work; a child reads a file its parent created — **ALL TESTS PASSED** at smp=1/2/4 |
 
 ## Implemented labs
 
@@ -47,7 +47,8 @@ are captured under [`results/`](results/).
 - [x] **M5 frecov** — raw 32-byte-aligned scan for FAT32 directory records, LFN name reconstruction, contiguous-cluster BMP recovery, inline SHA-1 (RFC 3174).
 - [x] **L1 pmm** — buddy allocator (orders 0–16, coalescing) under a global spinlock + per-CPU slab caches (8–2048 B) for small objects; allocations aligned to the smallest power of two ≥ size; O(1) `free` via a page-descriptor table.
 - [x] **L2 kmt** — preemptive round-robin scheduler driven by the timer IRQ and voluntary `yield` (through `os->trap`/`os->on_irq`); SMP spinlocks with xv6-style `push_off`/`pop_off`; sleeping counting semaphores; deferred kernel-stack release so no two CPUs ever run on the same stack during a switch.
-- [ ] **L3 uproc**, **L4 vfs** — planned.
+- [x] **L3 uproc** — user processes on the AM VME: each process has its own `AddrSpace` (`protect`/`map`/`ucontext`) over L1 pmm pages; a system call is a trap-page access turned into `EVENT_SYSCALL`, dispatched through `os->trap`; the L2 kmt scheduler time-slices user processes. `fork` deep-copies the address space + trap frame, `wait` reaps zombies (blocking without busy-waiting via trap-RIP rewind), `exec` loads another program, `mmap` grows the user heap. User programs are freestanding flat binaries (`user/`) embedded into the kernel via `user/genprogs.py`.
+- [x] **L4 vfs** — a mount table + path resolution (`namei`) over three real file systems: **ramfs** at `/` (read/write files & directories; holds `/bin` and `/tmp`), **devfs** at `/dev` (`zero`/`null`/`random`/`tty`), and **procfs** at `/proc` (`meminfo`/`uptime`/`self`, generated on read). Layered under the L3 `open`/`read`/`write`/`close`/`lseek`/`fstat`/`dup`/`mkdir`/`link`/`unlink`/`chdir` syscalls; `fork` dups the fd table, `exit` closes it, and `exec` loads program images out of `/bin`.
 
 ## Project structure
 
@@ -58,9 +59,9 @@ nju-os/
 │   └── Makefile  Makefile.lab
 ├── oslabs/                   # OSLabs on AbstractMachine
 │   ├── abstract-machine/     # imported HAL framework (patched for glibc≥2.34)
-│   ├── kernel/               # os.c, pmm.c (L1), kmt.c (L2), uproc.c, dev/…
-│   ├── user/  amgame/
-│   └── Makefile.lab
+│   ├── kernel/               # os.c, pmm.c (L1), kmt.c (L2), uproc.c (L3), vfs.c (L4)
+│   ├── user/                 # freestanding user programs -> src/uprogs.inc
+│   └── amgame/  Makefile.lab
 ├── results/                  # measured verification output per lab
 └── LICENSE  README.md
 ```
@@ -68,10 +69,11 @@ nju-os/
 ## How to run
 
 The MiniLabs build with a native toolchain (`gcc-multilib` for the 32-bit target).
-The OSLabs run on AbstractMachine's **native** backend (needs `libsdl2-dev`).
+The OSLabs run **fully headless** on AbstractMachine's **native** backend (no SDL /
+display needed — the kernel uses the serial console and its own devfs).
 
 ```bash
-sudo apt-get install -y gcc-multilib libsdl2-dev strace psmisc dosfstools mtools
+sudo apt-get install -y gcc-multilib strace psmisc dosfstools mtools
 
 # --- MiniLabs ---
 cd minilabs/pstree && make all && ./pstree-64 -np          # M1
@@ -81,11 +83,16 @@ cd ../crepl        && make all && ./crepl-64               # M4 (type C at the p
 cd ../frecov       && make all && bash tests/make_fat_test.sh                # M5
 
 # --- OSLabs (AbstractMachine native) ---
-cd oslabs/kernel
+cd oslabs/user   && make                                   # build user programs -> uprogs.inc
+cd ../kernel
 make ARCH=native TEST=pmm && smp=8 ./build/kernel-native   # L1 pmm stress
 make ARCH=native TEST=kmt && smp=4 ./build/kernel-native   # L2 kmt self-test
-make ARCH=native           && ./build/kernel-native        # plain boot (Hello World)
+make ARCH=native          && smp=1 ./build/kernel-native   # L3+L4: init runs the test suite
 ```
+
+The L3/L4 build boots `init` (pid 1), which exercises the process/syscall interface
+(L3) and then the file system (L4), printing an `[ok]`/`[FAIL]` line per check and
+ending with `ALL TESTS PASSED`. Runs at `smp=1/2/4` (real fork-based SMP).
 
 ## Verification
 
@@ -100,27 +107,37 @@ Each lab's raw measured output lives under [`results/<lab>/verify.txt`](results/
   image built with `mkfs.fat` + `mtools`; harness under `minilabs/frecov/tests/`).
 - **L1** the `PMM STRESS RESULT` line at smp=1/4/8.
 - **L2** the `KMT SELFTEST RESULT` line and a stability table across processor counts.
+- **L3** the full `init` run — `getpid`/`uptime`/`fork`/`wait` with exit statuses,
+  `exec` of a second program, and `mmap` — plus the pass line at smp=1/2/4.
+- **L4** the same `init` run's file-system section — a file round-trip, `/dev/*`,
+  `/proc/meminfo` — plus the pass line at smp=1/2/4.
 
 ### AbstractMachine notes
 
-The `native` backend is patched in two places so it builds and runs on a modern
-toolchain, both documented in the diffs:
+The `native` backend is the target for all four OSLabs and is patched only where a
+modern toolchain / headless host requires it:
 
 1. `platform.h` — `SIGSTKSZ` is no longer a compile-time constant in glibc ≥ 2.34,
    so the per-CPU signal stack is sized to a fixed `__AM_SIGSTKSZ`.
-2. `initcode.inc` — the embedded init program was renamed `_init` → `_initcode`
-   because the native kernel links against host libc, whose `crti.o` already
-   defines `_init`.
+2. `framework/main.c` — `ioe_init()` is **not** called: on `native` it starts the
+   SDL I/O stack whose event thread calls `halt()` on `SDL_QUIT`, which fires
+   immediately on a headless host and would abort the kernel at a random time. The
+   OS runs headless — console via `putch`/serial, timing via the timer IRQ, and a
+   self-contained L4 devfs — so no AM I/O device is needed.
 
 On `native`, "CPUs" are `fork`'d processes that share the kernel's memory via
 `MAP_SHARED` (only the per-CPU `thiscpu` block is private), so the SMP tests above
-exercise *real* shared-memory concurrency.
+exercise *real* shared-memory concurrency. For L3, a user process is a scheduler
+task whose saved `Context` is a *user* context (`ucontext`) over an mmap-backed
+`AddrSpace`; a system call is a read of the trap page (`0x100000`) that the AM CTE
+delivers as `EVENT_SYSCALL`.
 
 ## Tech stack
 
 C (gnu11), x86-64/i386, GNU Make; `setjmp`/`longjmp` + inline asm (coroutines);
 `dlopen`/`dlsym` (crepl); FAT32 + inline SHA-1 (frecov); AbstractMachine HAL with
-CTE (interrupts/context switch) and MPE (multiprocessing) for the OS kernel.
+CTE (interrupts/context switch), VME (virtual memory: `protect`/`map`/`ucontext`)
+and MPE (multiprocessing) for the OS kernel; freestanding flat-binary user programs.
 
 ## Key ideas / what I learned
 
@@ -137,6 +154,17 @@ CTE (interrupts/context switch) and MPE (multiprocessing) for the OS kernel.
 - **Preemptive SMP scheduling** hinges on two invariants: never preempt a CPU holding a
   spinlock (interrupt nesting), and never let two CPUs touch the same kernel stack
   (deferred stack release).
+- **A user process is just a scheduler task with a user context.** Building it on the AM
+  VME needs three pieces — an `AddrSpace` (`protect`/`map`), physical pages from the L1
+  allocator, and a `ucontext` whose first entry drops into ring-3/user code; `fork` is a
+  deep copy of that address space plus the trap frame with the child's `rax` set to 0.
+- **Blocking syscalls without a per-process kernel thread.** Because the syscall handler
+  runs in the trap and resumes *user* state, `wait`/`sleep` block by rewinding the trap
+  RIP back onto the syscall instruction, so a woken process simply re-executes the call —
+  no busy-waiting, no second stack.
+- **A VFS is an indirection table.** `open` walks a mount table + path resolver to an
+  inode; a file descriptor is `{inode, offset}`; ramfs, devfs and procfs differ only in
+  what an inode's `read`/`write` does (a buffer, a device op, or generated text).
 
 ## Credits & license
 
