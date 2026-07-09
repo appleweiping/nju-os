@@ -175,12 +175,22 @@ static void rewind_syscall(Context *ctx) {
 #endif
 }
 
-// Time base: count timer interrupts (100 Hz on the native backend) rather than
-// reading the AM timer device -- the latter would lazily initialise the SDL
-// I/O stack, which aborts the machine (SDL_QUIT -> halt) on a headless host.
-#define TICK_HZ 100
-static volatile uint64_t g_ticks = 0;
-static uint64_t uptime_us(void) { return g_ticks * (1000000ULL / TICK_HZ); }
+// Time base: real wall-clock microseconds.  We call the AM native timer helper
+// __am_timer_uptime() directly (gettimeofday under the hood, async-signal-safe)
+// instead of going through ioe_read(AM_TIMER_UPTIME), which would lazily bring
+// up the SDL I/O stack and abort the machine (SDL_QUIT -> halt) on a headless
+// host.  The native SIGVTALRM timer counts *user* CPU time and stalls when the
+// system is idle, so it is unsuitable as a sleep() clock; wall time is not.
+static uint64_t boot_us = 0;
+static uint64_t wall_us(void) {
+#ifdef __ARCH_NATIVE
+  extern void __am_timer_uptime(AM_TIMER_UPTIME_T *);
+  AM_TIMER_UPTIME_T t; __am_timer_uptime(&t); return t.us;
+#else
+  AM_TIMER_UPTIME_T t = io_read(AM_TIMER_UPTIME); return t.us;
+#endif
+}
+static uint64_t uptime_us(void) { return wall_us() - boot_us; }
 
 // Basic sanity check that a user pointer/range is inside user space.
 static int user_ok(uintptr_t va, size_t n) {
@@ -469,10 +479,12 @@ static Context *uproc_syscall(Event ev, Context *ctx) {
   return ctx;   // resume the same process with GPRx set
 }
 
-// Wake sleepers whose deadline has passed (runs on every timer tick).
+// Wake sleepers whose (wall-clock) deadline has passed.  Registered on both the
+// timer IRQ and EVENT_YIELD, so it also runs while the machine is idle (the idle
+// task yields continuously) -- the native user-time timer alone would not fire
+// when nothing but idle is runnable.
 static Context *uproc_tick(Event ev, Context *ctx) {
   (void)ev; (void)ctx;
-  g_ticks++;
   uint64_t now = uptime_us();
   kmt->spin_lock(&plock);
   for (int i = 0; i < nptable; i++) {
@@ -498,6 +510,7 @@ static Context *uproc_pagefault(Event ev, Context *ctx) {
 static void uproc_init(void) {
   kmt->spin_init(&plock, "uproc");
   next_pid = 1; nptable = 0;
+  boot_us = wall_us();
   vme_init(up_pgalloc, up_pgfree);
 
   if (vfs_init) vfs_init();   // L4: mount ramfs/procfs/devfs, populate /bin
@@ -507,6 +520,7 @@ static void uproc_init(void) {
   os->on_irq(0,         EVENT_SYSCALL,   uproc_syscall);
   os->on_irq(0,         EVENT_PAGEFAULT, uproc_pagefault);
   os->on_irq(INT32_MIN, EVENT_IRQ_TIMER, uproc_tick);
+  os->on_irq(INT32_MIN, EVENT_YIELD,     uproc_tick);   // also wake while idle
 
   const uprog_t *up = uprog_find("init");
   panic_on(!up, "uproc: no embedded 'init' program");

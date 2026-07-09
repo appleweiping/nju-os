@@ -69,6 +69,12 @@ static void test_l3(void) {
     page[0] = 0xdeadbeef; page[1023] = 0x1234;
     check("mmap page holds written data", page[0] == (int)0xdeadbeef && page[1023] == 0x1234);
   }
+
+  // sleep() blocks against the timer for ~1s (no busy-wait) then returns
+  int64_t before = uptime();
+  sleep(1);
+  int64_t slept = uptime() - before;
+  check("sleep(1) blocks ~1 second", slept >= 900 && slept <= 3000);
 }
 
 // ------------------------------------------------------------------- L4 tests

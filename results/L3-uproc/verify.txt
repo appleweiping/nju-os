@@ -4,9 +4,9 @@ Run:    smp=<N> ./build/kernel-native
 
 Each user process has its own AM AddrSpace (protect/map/ucontext) over L1 pmm
 pages; a syscall traps via the native 0x100000 trap page (EVENT_SYSCALL); the L2
-kmt scheduler time-slices user processes.  init (pid 1) exercises the L3 syscall
-interface (getpid/uptime/fork/exit/wait/exec/mmap) -- the L3 section below.  The
-same binary also runs the L4 file-system checks (see results/L4-vfs).
+kmt scheduler time-slices user processes.  init (pid 1) drives the suite; the L3
+section exercises getpid/uptime/fork/exit/wait/exec/mmap/sleep (the L4 section is
+covered in results/L4-vfs).
 
 === full boot + init run (smp=1) ===
 Got 128 MiB heap: [0x1000000, 0x9000000)
@@ -28,6 +28,7 @@ uproc: created init (pid 1), entering user space...
   [ok] exec() ran /bin/hello (exit 0)
   [ok] mmap() returns a usable address
   [ok] mmap page holds written data
+  [ok] sleep(1) blocks ~1 second
 == L4 vfs: files, /dev and /proc ==
   [ok] open(/tmp/hello.txt, O_CREATE|O_RDWR)
   [ok] write() returns byte count
@@ -49,7 +50,7 @@ ALL TESTS PASSED
 init: exited with status 0 -- halting
 Exit code = 00h
 
-=== L3 result across processor counts (real fork-based SMP), 3 runs each ===
+=== result across processor counts (real fork-based SMP) ===
 smp=1 run1: ALL TESTS PASSED
 smp=1 run2: ALL TESTS PASSED
 smp=1 run3: ALL TESTS PASSED

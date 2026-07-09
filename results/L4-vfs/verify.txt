@@ -29,6 +29,7 @@ uproc: created init (pid 1), entering user space...
   [ok] exec() ran /bin/hello (exit 0)
   [ok] mmap() returns a usable address
   [ok] mmap page holds written data
+  [ok] sleep(1) blocks ~1 second
 == L4 vfs: files, /dev and /proc ==
   [ok] open(/tmp/hello.txt, O_CREATE|O_RDWR)
   [ok] write() returns byte count
@@ -51,6 +52,12 @@ init: exited with status 0 -- halting
 Exit code = 00h
 
 === same suite across processor counts (real fork-based SMP) ===
-smp=1: ALL TESTS PASSED
-smp=2: ALL TESTS PASSED
-smp=4: ALL TESTS PASSED
+smp=1 run1: ALL TESTS PASSED
+smp=1 run2: ALL TESTS PASSED
+smp=1 run3: ALL TESTS PASSED
+smp=2 run1: ALL TESTS PASSED
+smp=2 run2: ALL TESTS PASSED
+smp=2 run3: ALL TESTS PASSED
+smp=4 run1: ALL TESTS PASSED
+smp=4 run2: ALL TESTS PASSED
+smp=4 run3: ALL TESTS PASSED
