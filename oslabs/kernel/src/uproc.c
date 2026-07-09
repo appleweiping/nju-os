@@ -50,6 +50,7 @@ void vfs_init(void)                                    __attribute__((weak));
 void vfs_fork(task_t *parent, task_t *child)           __attribute__((weak));
 void vfs_close_all(task_t *p)                          __attribute__((weak));
 void vfs_setup_stdio(task_t *p)                        __attribute__((weak));
+const unsigned char *vfs_prog_data(const char *name, unsigned *len) __attribute__((weak));
 
 // --------------------------------------------------------------- global state
 static struct spinlock plock;    // protects pid allocation + process list ops
@@ -259,8 +260,16 @@ static int sys_exec(task_t *p, const char *path, char *const argv[]) {
   if (!user_ok((uintptr_t)path, 1)) return -1;
   const char *name = path;
   if (name[0] == '/') { name++; if (name[0]=='b'&&name[1]=='i'&&name[2]=='n'&&name[3]=='/') name += 4; }
-  const uprog_t *up = uprog_find(name);
-  if (!up) return -1;
+
+  // Prefer loading the program image from the L4 file system (/bin/<name>); if
+  // the vfs is absent (L3-only build) fall back to the embedded program table.
+  const unsigned char *bin = NULL; unsigned len = 0;
+  if (vfs_prog_data) bin = vfs_prog_data(name, &len);
+  if (!bin) {
+    const uprog_t *up = uprog_find(name);
+    if (!up) return -1;
+    bin = up->bin; len = up->len;
+  }
 
   // Fresh address space for the new image.
   AddrSpace  old_as   = p->as;
@@ -271,7 +280,7 @@ static int sys_exec(task_t *p, const char *path, char *const argv[]) {
   p->nmap = 0;
   p->heap_top = USER_HEAP;
   protect(&p->as);
-  uintptr_t entry = proc_load_image(p, up->bin, up->len);
+  uintptr_t entry = proc_load_image(p, bin, len);
 
   Area kstack = { p->stack, p->stack + STACK_SZ };
   p->context = ucontext(&p->as, kstack, (void *)entry);
@@ -504,6 +513,17 @@ static void uproc_init(void) {
   initproc = proc_spawn("init", up->bin, up->len);
   printf("uproc: created init (pid %d), entering user space...\n", initproc->pid);
 }
+
+// ------------------------------------------------ accessors used by L4 vfs.c
+int uproc_nprog(void) { return nuprogs; }
+
+int uproc_prog(int i, const char **name, const unsigned char **bin, unsigned *len) {
+  if (i < 0 || i >= nuprogs) return 0;
+  *name = uprogs[i].name; *bin = uprogs[i].bin; *len = uprogs[i].len;
+  return 1;
+}
+
+int64_t uproc_uptime_ms(void) { return (int64_t)(uptime_us() / 1000); }
 
 // L3 exposes the raw process operations too (used by tests / kernel callers).
 static int   up_kputc(task_t *t, char ch)                 { return sys_kputc(t, ch); }
